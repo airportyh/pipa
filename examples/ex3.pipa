@@ -1,0 +1,8 @@
+name = "Bobby"
+sentence = "These are in \"quotes\""
+message = "Un\nece\ssary \escapes"
+blankChars = "\tand\n"
+a = 1
+print(name, a)
+
+# This is a comment
