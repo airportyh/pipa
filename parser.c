@@ -262,7 +262,6 @@ int tokenize(
                     break;
                 }
             }
-            // new id token
             char *text = malloc(sizeof(char) * (j + 1));
             strncpy(text, buffer, j);
             text[j] = 0;

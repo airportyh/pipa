@@ -1,9 +1,8 @@
 # pipa language
 
-This is a programming language.
-The goal is to bootstrap itself, is in to write the compiler
-in the language itself. Also, it should
-be more pleasant to write the compiler in the
+This is a programming language whose goal is to bootstrap itself,
+as in to write the compiler in the language itself.
+Also, it should be more pleasant to write the compiler in the
 new language.
 
 ## Features
