@@ -19,7 +19,7 @@ protocol Iterator<T> {
     T next()
     bool hasNext()
 }
-    
+
 bool compile(str filePath) {
     for entry in readDir(filePath) {
         print(entry)

@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum TokenType {
+typedef enum _TokenType {
     IntLit,
     StrLit,
     Id,
@@ -19,37 +19,89 @@ enum TokenType {
     Newline,
     Comma,
     Comment,
-};
+} TokenType;
 
-enum TokenizeErrorType {
+typedef enum _TokenizeErrorType {
     IdTooLong = 1,
     NumberTooLong,
     StrTooLong,
     CommentTooLong,
     UnknownChar,
-};
+} TokenizeErrorType;
 
-struct Token {
-    enum TokenType type;
+typedef struct _Token {
+    TokenType type;
     char *text;
+    
+    // TODO replace with LocationInfo
     int startOffset;
     int endOffset;
     int startLine;
     int endLine;
     int startChar;
     int endChar;
-};
+} Token;
 
-struct TokenList {
-    struct Token *token;
-    struct TokenList *next;
-};
+typedef struct _TokenList {
+    Token *token;
+    struct _TokenList *next;
+} TokenList;
 
-struct TokenizeErrorInfo {
+typedef struct _TokenizeErrorInfo {
     int offset;
     int line;
     int character;
+} TokenizeErrorInfo;
+
+typedef enum _NodeType {
+    VarAssign = 1,
+    FunCall,
+    IntLiteral,
+    Identifier,
+    TypeIdentifier,
+} NodeType;
+
+typedef struct _LocationInfo {
+    int startOffset;
+    int endOffset;
+    int startLine;
+    int endLine;
+    int startChar;
+    int endChar;
+} LocationInfo;
+
+typedef enum _ParseError {
+    ParseSuccess = 0,
+    ParseNoMatch,
+    ParseUnrecoverable,
+} ParseError;
+
+struct VarAssignData {
+    struct _Node *varType;
+    struct _Node *varName;
+    struct _Node *initValue;
 };
+
+struct FunCallData {
+    struct _Node *funName;
+    struct _NodeList *args;
+};
+
+typedef struct _Node {
+    NodeType type;
+    LocationInfo location;
+    union {
+        struct VarAssignData varAssign;
+        struct FunCallData funCall;
+        char *id;
+        int val;
+    } data;
+} Node;
+
+typedef struct _NodeList {
+    Node *node;
+    struct _NodeList *next;
+} NodeList;
 
 #define BUFFER_LEN 100
 
@@ -61,7 +113,7 @@ int isDigit(char c) {
     return c >= '0' && c <= '9';
 }
 
-int printToken(struct Token *token, int details) {
+int printToken(Token *token, int details) {
     printf("Token(");
     switch (token->type) {
         case Id:
@@ -132,30 +184,30 @@ int printToken(struct Token *token, int details) {
 }
 
 void tokenListAppend(
-    struct TokenList **tokens, 
-    struct TokenList **tokensTail, 
-    struct Token *token
+    TokenList **tokens, 
+    TokenList **tokensTail, 
+    Token *token
 ) {
     // Append to the end of tokens linked list
     if (*tokens == NULL) {
-        *tokens = malloc(sizeof (struct TokenList));
+        *tokens = malloc(sizeof (TokenList));
         *tokensTail = *tokens;
     } else {
-        (*tokensTail)->next = malloc(sizeof (struct TokenList));
+        (*tokensTail)->next = malloc(sizeof (TokenList));
         (*tokensTail) = (*tokensTail)->next;
     }
     (*tokensTail)->token = token;
     (*tokensTail)->next = NULL;
 }
 
-struct Token *createToken(
-    enum TokenType type, 
+Token *createToken(
+    TokenType type, 
     char *text,
     int startOffset,
     int startLine,
     int startChar
 ) {
-    struct Token *token = malloc(sizeof (struct Token));
+    Token *token = malloc(sizeof (Token));
     token->type = type;
     token->text = text;
     token->startOffset = startOffset;
@@ -167,8 +219,8 @@ struct Token *createToken(
     return token;
 }
 
-struct Token *createTokenLong(
-    enum TokenType type, 
+Token *createTokenLong(
+    TokenType type, 
     char *text,
     int startOffset,
     int endOffset,
@@ -177,7 +229,7 @@ struct Token *createTokenLong(
     int startChar,
     int endChar
 ) {
-    struct Token *token = malloc(sizeof (struct Token));
+    Token *token = malloc(sizeof (Token));
     token->type = type;
     token->text = text;
     token->startOffset = startOffset;
@@ -191,15 +243,15 @@ struct Token *createTokenLong(
 
 int tokenize(
     FILE *file, 
-    struct TokenList **tokensRetval,
-    struct TokenizeErrorInfo *errorInfo
+    TokenList **tokensRetval,
+    TokenizeErrorInfo *errorInfo
 ) {
     char chr;
     char buffer[100];
     
-    struct TokenList *tokens = NULL;
-    struct TokenList *tokensTail = NULL;
-    struct Token *token = NULL;
+    TokenList *tokens = NULL;
+    TokenList *tokensTail = NULL;
+    Token *token = NULL;
     chr = fgetc(file);
     int i = 0;
     int c = 0;
@@ -398,10 +450,10 @@ int tokenize(
             tokenListAppend(&tokens, &tokensTail, token);
             continue;
         } else if (chr == '\n') {
-            line++;
-            c = 0;
             token = createToken(Newline, NULL, i, line, c);
             tokenListAppend(&tokens, &tokensTail, token);
+            line++;
+            c = 0;
         } else {
             errorInfo->offset = i;
             errorInfo->line = line;
@@ -419,19 +471,175 @@ int tokenize(
     return 0;
 }
 
-int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        printf("Please provide a file name\n");
-        exit(1);
+int printAST(Node *node, int level) {
+    for (int i = 0; i < level; i++) {
+        printf("  ");
+    }
+    switch (node->type) {
+        case VarAssign:
+            {
+                printf("VarAssign\n");
+                struct VarAssignData *data = &(node->data.varAssign);
+                printAST(data->varType, level + 1);
+                printAST(data->varName, level + 1);
+                printAST(data->initValue, level + 1);
+                break;
+            }
+        case FunCall:
+            {
+                printf("FunCall\n");
+                struct FunCallData *data = &(node->data.funCall);
+                printAST(data->funName, level + 1);
+                NodeList *args = data->args;
+                for (int i = 0; i < level + 1; i++) {
+                    printf("  ");
+                }
+                printf("Args:");
+                while (args != NULL) {
+                    printAST(args->node, level + 2);
+                    args = args->next;
+                }
+                break;
+            }
+        case IntLiteral:
+            printf("IntLiteral(%d)\n", node->data.val);
+            break;
+        case Identifier:
+            printf("Identifier(%s)\n", node->data.id);
+            break;
+        case TypeIdentifier:
+            printf("TypeIdentifier(%s)\n", node->data.id);
+            break;
     }
     
-    char* filename = argv[1];
-    FILE *file = fopen(filename, "r");
+    return 0;
+}
+
+ParseError parseExpr(TokenList *tokens, Node **resultNode) {
+    if (tokens == NULL) {
+        return ParseNoMatch;
+    }
+    Token *token = tokens->token;
+    if (token->type == IntLit) {
+        Node *node = malloc(sizeof (Node));
+        node->type = IntLiteral;
+        node->data.val = atoi(token->text);
+        *resultNode = node;
+        return ParseSuccess;
+    } else {
+        return ParseNoMatch;
+    }
+}
+
+ParseError parseVarAssign(TokenList *tokens, Node **resultNode) {
+    if (tokens == NULL) {
+        return ParseNoMatch;
+    }
+    Token *typeIdToken = tokens->token;
+    if (typeIdToken->type != Id) {
+        return ParseNoMatch;
+    }
+    tokens = tokens->next;
+    Token *varNameToken = tokens->token;
+    if (varNameToken->type != Id) {
+        return ParseNoMatch;
+    }
+    tokens = tokens->next;
+    Token *assignToken = tokens->token;
+    if (assignToken->type != AssignOp) {
+        return ParseNoMatch;
+    }
+    tokens = tokens->next;
+    Token *initValueToken = tokens->token;
+    Node *initValue;
+    int result = parseExpr(tokens, &initValue);
+    if (result != ParseSuccess) {
+        return result;
+    }
     
-    printf("Processing %s\n", filename);
-    struct TokenList *tokens;
-    struct TokenizeErrorInfo errorInfo;
-    enum TokenizeErrorType err = tokenize(file, &tokens, &errorInfo);
+    Node *varType = malloc(sizeof (Node));
+    varType->type = TypeIdentifier;
+    // TODO copy location info
+    // varType->location.startOffset = typeIdToken.startOffset;
+    // varType->location.endOffset = typeIdToken.endOffset;
+    // varType->location.startLine = typeIdToken.startLine;
+    // varType->location.endLine = typeIdToken.endLine;
+    // varType->location.startChar = typeIdToken.startChar;
+    // varType->location.endChar = typeIdToken.endChar;
+    varType->data.id = typeIdToken->text;
+    
+    Node *varName = malloc(sizeof (Node));
+    varName->type = Identifier;
+    varName->data.id = varNameToken->text;
+    
+    Node *varAssign = malloc(sizeof (Node));
+    varAssign->type = VarAssign;
+    varAssign->data.varAssign.varType = varType;
+    varAssign->data.varAssign.varName = varName;
+    varAssign->data.varAssign.initValue = initValue;
+    
+    *resultNode = varAssign;
+    return 0;
+}
+
+ParseError parseFunCall(
+    TokenList *tokens, 
+    Node **resultNode
+) {
+    if (tokens == NULL) {
+        return ParseNoMatch;
+    }
+    Token *funName = tokens->token;
+    if (funName->type != Id) {
+        return ParseNoMatch;
+    }
+    tokens = tokens->next;
+    if (tokens->token->type != LeftParan) {
+        return ParseNoMatch;
+    }
+    
+    tokens = tokens->next;
+    while (1) {
+        Node *arg;
+        int result = parseExpr(tokens, &arg);
+        
+    }
+}
+
+ParseError parse(TokenList *tokens, Node **resultNode) {
+    int result;
+    
+    result = parseVarAssign(tokens, resultNode);
+    return result;
+    if (result != ParseNoMatch) {
+        return result;
+    }
+    result = parseFunCall(tokens, resultNode);
+    if (result != ParseNoMatch) {
+        return result;
+    } else {
+        return ParseUnrecoverable;
+    }
+}
+
+void parseCommand(FILE *file) {
+    TokenList *tokens;
+    TokenizeErrorInfo errorInfo;
+    TokenizeErrorType err = tokenize(file, &tokens, &errorInfo);
+    
+    Node *resultNode;
+    int result = parse(tokens, &resultNode);
+    if (result == ParseSuccess) {
+        printAST(resultNode, 0);
+    } else {
+        printf("Parse failed\n");
+    }
+}
+
+void lexCommand(FILE *file) {
+    TokenList *tokens;
+    TokenizeErrorInfo errorInfo;
+    TokenizeErrorType err = tokenize(file, &tokens, &errorInfo);
     if (err != 0) {
         printf("Tokenize error: %d\n", err);
         printf("Line %d, char %d, offset %d\n", errorInfo.line, errorInfo.character, errorInfo.offset);
@@ -439,8 +647,28 @@ int main(int argc, char *argv[]) {
     }
     
     while (tokens != NULL) {
-        printToken(tokens->token, 1);
+        printToken(tokens->token, 0);
         tokens = tokens->next;
     }
+}
+
+int main(int argc, char *argv[]) {
+    if (argc < 3) {
+        printf("Usage: pipa <command> <filename>\n");
+        printf("  where command is one of: lex and parse\n");
+        exit(1);
+    }
+    
+    char* command = argv[1];
+    char* filename = argv[2];
+    FILE *file = fopen(filename, "r");
+    if (strcmp(command, "lex") == 0) {
+        lexCommand(file);
+    } else if (strcmp(command, "parse") == 0) {
+        parseCommand(file);
+    }
+    fclose(file);
+    
+    
     
 }
