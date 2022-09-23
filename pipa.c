@@ -59,6 +59,7 @@ typedef enum _NodeType {
     IntLiteral,
     Identifier,
     TypeIdentifier,
+    Program,
 } NodeType;
 
 typedef struct _LocationInfo {
@@ -74,6 +75,7 @@ typedef enum _ParseError {
     ParseSuccess = 0,
     ParseNoMatch,
     ParseUnrecoverable,
+    ParseExtraTokens,
 } ParseError;
 
 struct VarAssignData {
@@ -87,12 +89,17 @@ struct FunCallData {
     struct _NodeList *args;
 };
 
+struct ProgramData {
+    struct _NodeList *statements;
+};
+
 typedef struct _Node {
     NodeType type;
     LocationInfo location;
     union {
         struct VarAssignData varAssign;
         struct FunCallData funCall;
+        struct ProgramData program;
         char *id;
         int val;
     } data;
@@ -494,7 +501,7 @@ int printAST(Node *node, int level) {
                 for (int i = 0; i < level + 1; i++) {
                     printf("  ");
                 }
-                printf("Args:");
+                printf("Args:\n");
                 while (args != NULL) {
                     printAST(args->node, level + 2);
                     args = args->next;
@@ -510,12 +517,20 @@ int printAST(Node *node, int level) {
         case TypeIdentifier:
             printf("TypeIdentifier(%s)\n", node->data.id);
             break;
+        case Program:
+            printf("Program\n");
+            NodeList *statements = node->data.program.statements;
+            while (statements != NULL) {
+                printAST(statements->node, level + 2);
+                statements = statements->next;
+            }
+            break;
     }
     
     return 0;
 }
 
-ParseError parseExpr(TokenList *tokens, Node **resultNode) {
+ParseError parseExpr(TokenList *tokens, Node **resultNode, TokenList **tokensLeft) {
     if (tokens == NULL) {
         return ParseNoMatch;
     }
@@ -525,13 +540,25 @@ ParseError parseExpr(TokenList *tokens, Node **resultNode) {
         node->type = IntLiteral;
         node->data.val = atoi(token->text);
         *resultNode = node;
+        *tokensLeft = tokens->next;
+        return ParseSuccess;
+    } else if (token->type == Id) {
+        Node *node = malloc(sizeof (Node));
+        node->type = Identifier;
+        node->data.id = token->text;
+        *resultNode = node;
+        *tokensLeft = tokens->next;
         return ParseSuccess;
     } else {
         return ParseNoMatch;
     }
 }
 
-ParseError parseVarAssign(TokenList *tokens, Node **resultNode) {
+ParseError parseVarAssign(
+    TokenList *tokens, 
+    Node **resultNode, 
+    TokenList **tokensLeft
+) {
     if (tokens == NULL) {
         return ParseNoMatch;
     }
@@ -552,11 +579,15 @@ ParseError parseVarAssign(TokenList *tokens, Node **resultNode) {
     tokens = tokens->next;
     Token *initValueToken = tokens->token;
     Node *initValue;
-    int result = parseExpr(tokens, &initValue);
+    TokenList *left;
+    int result = parseExpr(tokens, &initValue, &left);
     if (result != ParseSuccess) {
         return result;
     }
     
+    *tokensLeft = left;
+    
+    // Create the node
     Node *varType = malloc(sizeof (Node));
     varType->type = TypeIdentifier;
     // TODO copy location info
@@ -584,7 +615,8 @@ ParseError parseVarAssign(TokenList *tokens, Node **resultNode) {
 
 ParseError parseFunCall(
     TokenList *tokens, 
-    Node **resultNode
+    Node **resultNode,
+    TokenList **tokensLeft
 ) {
     if (tokens == NULL) {
         return ParseNoMatch;
@@ -599,27 +631,106 @@ ParseError parseFunCall(
     }
     
     tokens = tokens->next;
+    NodeList *args = NULL;
+    NodeList *argsTail = NULL;
     while (1) {
         Node *arg;
-        int result = parseExpr(tokens, &arg);
-        
+        TokenList *left;
+        int result = parseExpr(tokens, &arg, &left);
+        if (result == ParseSuccess) {
+            tokens = left;
+            if (tokens == NULL) {
+                return ParseNoMatch;
+            }
+            NodeList *next = malloc(sizeof (NodeList));
+            next->node = arg;
+            next->next = NULL;
+            if (args == NULL) {
+                args = next;
+                argsTail = next;
+            } else {
+                argsTail->next = next;
+                argsTail = next;
+            }
+            if (tokens->token->type != Comma) {
+                break;
+            } else {
+                tokens = tokens->next;
+            }
+        }
     }
+    if (tokens->token->type != RightParan) {
+        return ParseNoMatch;
+    }
+    
+    Node *retval = malloc(sizeof (Node));
+    retval->type = FunCall;
+    Node *funNameNode = malloc(sizeof (Node));
+    funNameNode->type = Identifier;
+    funNameNode->data.id = funName->text;
+    retval->data.funCall.funName = funNameNode;
+    retval->data.funCall.args = args;
+    *resultNode = retval;
+    *tokensLeft = tokens->next;
+    return ParseSuccess;
 }
 
-ParseError parse(TokenList *tokens, Node **resultNode) {
+ParseError parseStatement(TokenList *tokens, Node **resultNode, TokenList **tokensLeft) {
     int result;
-    
-    result = parseVarAssign(tokens, resultNode);
-    return result;
-    if (result != ParseNoMatch) {
+    TokenList *left;
+    result = parseVarAssign(tokens, resultNode, &left);
+    if (result == ParseSuccess) {
+        *tokensLeft = left;
+        return result;
+    } else if (result == ParseUnrecoverable) {
         return result;
     }
-    result = parseFunCall(tokens, resultNode);
-    if (result != ParseNoMatch) {
+    result = parseFunCall(tokens, resultNode, &left);
+    if (result == ParseSuccess) {
+        *tokensLeft = left;
         return result;
     } else {
         return ParseUnrecoverable;
     }
+}
+
+ParseError parse(TokenList *tokens, Node **resultNode) {
+    NodeList *statements = NULL;
+    NodeList *statementsTail = NULL;
+    while (1) {
+        Node *resultNode;
+        TokenList *left;
+        int result = parseStatement(tokens, &resultNode, &left);
+        if (result == ParseSuccess) {
+            NodeList *next = malloc(sizeof (NodeList));
+            next->node = resultNode;
+            next->next = NULL;
+            if (statements == NULL) {
+                statements = next;
+                statementsTail = next;
+            } else {
+                statementsTail->next = next;
+                statementsTail = next;
+            }
+            tokens = left;
+        } else {
+            return ParseNoMatch;
+        }
+        if (tokens == NULL) {
+            break;
+        }
+        if (tokens->token->type == Newline) {
+            tokens = tokens->next;
+            continue;
+        } else {
+            break;
+        }
+    }
+    Node *program = malloc(sizeof (Node));
+    program->type = Program;
+    program->data.program.statements = statements;
+    *resultNode = program;
+    return ParseSuccess;
 }
 
 void parseCommand(FILE *file) {
