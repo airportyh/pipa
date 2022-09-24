@@ -7,6 +7,10 @@ typedef enum _TokenType {
     StrLit,
     Id,
     AssignOp,
+    AddOp,
+    SubtractOp,
+    DivideOp,
+    MultiplyOp,
     LeftParan,
     RightParan,
     LeftBrace,
@@ -22,7 +26,8 @@ typedef enum _TokenType {
 } TokenType;
 
 typedef enum _TokenizeErrorType {
-    IdTooLong = 1,
+    LexSuccess = 0,
+    IdTooLong,
     NumberTooLong,
     StrTooLong,
     CommentTooLong,
@@ -57,9 +62,11 @@ typedef enum _NodeType {
     VarAssign = 1,
     FunCall,
     IntLiteral,
+    StrLiteral,
     Identifier,
     TypeIdentifier,
     Program,
+    BinaryOp,
 } NodeType;
 
 typedef struct _LocationInfo {
@@ -93,6 +100,12 @@ struct ProgramData {
     struct _NodeList *statements;
 };
 
+struct BinOpData {
+    struct _Node *lhs;
+    int op; // TokenType that ends in Op
+    struct _Node *rhs;
+};
+
 typedef struct _Node {
     NodeType type;
     LocationInfo location;
@@ -100,8 +113,10 @@ typedef struct _Node {
         struct VarAssignData varAssign;
         struct FunCallData funCall;
         struct ProgramData program;
+        struct BinOpData binOp;
         char *id;
         int val;
+        char *str;
     } data;
 } Node;
 
@@ -120,6 +135,13 @@ int isDigit(char c) {
     return c >= '0' && c <= '9';
 }
 
+int isOperator(TokenType type) {
+    return type == AddOp ||
+        type == SubtractOp ||
+        type == DivideOp ||
+        type == MultiplyOp;
+}
+
 int printToken(Token *token, int details) {
     printf("Token(");
     switch (token->type) {
@@ -128,6 +150,18 @@ int printToken(Token *token, int details) {
             break;
         case AssignOp:
             printf("AssignOp");
+            break;
+        case AddOp:
+            printf("AddOp");
+            break;
+        case SubtractOp:
+            printf("SubtractOp");
+            break;
+        case DivideOp:
+            printf("DivideOp");
+            break;
+        case MultiplyOp:
+            printf("MultiplyOp");
             break;
         case IntLit:
             printf("IntLit,");
@@ -386,6 +420,18 @@ int tokenize(
         } else if (chr == '=') {
             token = createToken(AssignOp, NULL, i, line, c);
             tokenListAppend(&tokens, &tokensTail, token);
+        } else if (chr == '+') {
+            token = createToken(AddOp, NULL, i, line, c);
+            tokenListAppend(&tokens, &tokensTail, token);
+        } else if (chr == '-') {
+            token = createToken(SubtractOp, NULL, i, line, c);
+            tokenListAppend(&tokens, &tokensTail, token);
+        } else if (chr == '/') {
+            token = createToken(DivideOp, NULL, i, line, c);
+            tokenListAppend(&tokens, &tokensTail, token);
+        } else if (chr == '*') {
+            token = createToken(MultiplyOp, NULL, i, line, c);
+            tokenListAppend(&tokens, &tokensTail, token);
         } else if (chr == '(') {
             token = createToken(LeftParan, NULL, i, line, c);
             tokenListAppend(&tokens, &tokensTail, token);
@@ -511,11 +557,37 @@ int printAST(Node *node, int level) {
         case IntLiteral:
             printf("IntLiteral(%d)\n", node->data.val);
             break;
+        case StrLiteral:
+            printf("StrLiteral(%s)\n", node->data.str);
+            break;
         case Identifier:
             printf("Identifier(%s)\n", node->data.id);
             break;
         case TypeIdentifier:
             printf("TypeIdentifier(%s)\n", node->data.id);
+            break;
+        case BinaryOp:
+            printf("BinaryOp");
+            switch (node->data.binOp.op) {
+                case AddOp:
+                    printf("(+)");
+                    break;
+                case SubtractOp:
+                    printf("(-)");
+                    break;
+                case DivideOp:
+                    printf("(/)");
+                    break;
+                case MultiplyOp:
+                    printf("(*)");
+                    break;
+                default:
+                    printf("(?)");
+                    break;
+            }
+            printf("\n");
+            printAST(node->data.binOp.lhs, level + 1);
+            printAST(node->data.binOp.rhs, level + 1);
             break;
         case Program:
             printf("Program\n");
@@ -530,9 +602,23 @@ int printAST(Node *node, int level) {
     return 0;
 }
 
+ParseError parseFunCall(TokenList *tokens, Node **resultNode, TokenList **tokensLeft);
+ParseError parseUnaryOp(TokenList *tokens, Node **resultNode, TokenList **tokensLeft);
+ParseError parseBinaryOp(TokenList *tokens, Node **resultNode, TokenList **tokensLeft);
+
 ParseError parseExpr(TokenList *tokens, Node **resultNode, TokenList **tokensLeft) {
+    return parseBinaryOp(tokens, resultNode, tokensLeft);
+}
+
+ParseError parseUnaryOp(TokenList *tokens, Node **resultNode, TokenList **tokensLeft) {
     if (tokens == NULL) {
         return ParseNoMatch;
+    }
+    
+    Node *node;
+    if (ParseSuccess == parseFunCall(tokens, &node, tokensLeft)) {
+        *resultNode = node;
+        return ParseSuccess;
     }
     Token *token = tokens->token;
     if (token->type == IntLit) {
@@ -549,9 +635,41 @@ ParseError parseExpr(TokenList *tokens, Node **resultNode, TokenList **tokensLef
         *resultNode = node;
         *tokensLeft = tokens->next;
         return ParseSuccess;
+    } else if (token->type == StrLit) {
+        Node *node = malloc(sizeof (Node));
+        node->type = StrLiteral;
+        node->data.str = token->text;
+        *resultNode = node;
+        *tokensLeft = tokens->next;
+        return ParseSuccess;
     } else {
         return ParseNoMatch;
     }
+}
+
+ParseError parseBinaryOp(TokenList *tokens, Node **resultNode, TokenList **tokensLeft) {
+    Node *lhs;
+    if (ParseSuccess == parseUnaryOp(tokens, &lhs, tokensLeft)) {
+        tokens = *tokensLeft;
+        if (tokens == NULL || !isOperator(tokens->token->type)) {
+            *resultNode = lhs;
+            return ParseSuccess;
+        }
+        TokenType opType = tokens->token->type;
+        tokens = tokens->next;
+        if (tokens == NULL) return ParseNoMatch;
+        Node *rhs;
+        if (ParseSuccess == parseBinaryOp(tokens, &rhs, tokensLeft)) {
+            Node *ret = malloc(sizeof (Node));
+            ret->type = BinaryOp;
+            ret->data.binOp.lhs = lhs;
+            ret->data.binOp.rhs = rhs;
+            ret->data.binOp.op = opType;
+            *resultNode = ret;
+            return ParseSuccess;
+        }
+    }
+    return ParseNoMatch;
 }
 
 ParseError parseVarAssign(
@@ -657,6 +775,8 @@ ParseError parseFunCall(
             } else {
                 tokens = tokens->next;
             }
+        } else {
+            return result;
         }
     }
     if (tokens->token->type != RightParan) {
@@ -676,34 +796,24 @@ ParseError parseFunCall(
 }
 
 ParseError parseStatement(TokenList *tokens, Node **resultNode, TokenList **tokensLeft) {
-    int result;
-    TokenList *left;
-    result = parseVarAssign(tokens, resultNode, &left);
-    if (result == ParseSuccess) {
-        *tokensLeft = left;
-        return result;
-    } else if (result == ParseUnrecoverable) {
-        return result;
+    if (ParseSuccess == parseVarAssign(tokens, resultNode, tokensLeft)) {
+        return ParseSuccess;
     }
-    result = parseFunCall(tokens, resultNode, &left);
-    if (result == ParseSuccess) {
-        *tokensLeft = left;
-        return result;
-    } else {
-        return ParseUnrecoverable;
+    if (ParseSuccess == parseFunCall(tokens, resultNode, tokensLeft)) {
+        return ParseSuccess;
     }
+    return ParseNoMatch;
 }
 
 ParseError parse(TokenList *tokens, Node **resultNode) {
     NodeList *statements = NULL;
     NodeList *statementsTail = NULL;
     while (1) {
-        Node *resultNode;
+        Node *stmtNode;
         TokenList *left;
-        int result = parseStatement(tokens, &resultNode, &left);
-        if (result == ParseSuccess) {
+        if (ParseSuccess == parseStatement(tokens, &stmtNode, &left)) {
             NodeList *next = malloc(sizeof (NodeList));
-            next->node = resultNode;
+            next->node = stmtNode;
             next->next = NULL;
             if (statements == NULL) {
                 statements = next;
@@ -726,22 +836,39 @@ ParseError parse(TokenList *tokens, Node **resultNode) {
             break;
         }
     }
+    
     Node *program = malloc(sizeof (Node));
     program->type = Program;
     program->data.program.statements = statements;
     *resultNode = program;
+    if (tokens != NULL) {
+        *resultNode = program;
+        return ParseExtraTokens;
+    }
     return ParseSuccess;
 }
 
 void parseCommand(FILE *file) {
     TokenList *tokens;
     TokenizeErrorInfo errorInfo;
-    TokenizeErrorType err = tokenize(file, &tokens, &errorInfo);
+    TokenizeErrorType lexResult = tokenize(file, &tokens, &errorInfo);
+    
+    if (lexResult != LexSuccess) {
+        printf("Lex failed\n");
+        return;
+    }
     
     Node *resultNode;
     int result = parse(tokens, &resultNode);
     if (result == ParseSuccess) {
         printAST(resultNode, 0);
+    } else if (result == ParseExtraTokens) {
+        printAST(resultNode, 0);
+        printf("Parse failed: extra token(s) at the end\n");
+    } else if (result == ParseNoMatch) {
+        printf("Parse failed: no match\n");
+    } else if (result == ParseUnrecoverable) {
+        printf("Parse failed: unrecoverable\n");
     } else {
         printf("Parse failed\n");
     }

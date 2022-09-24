@@ -25,3 +25,13 @@ Just enough to write a compiler.
 * syntax style is pleasant and is like Python (to me)
 * do we need modules?
 * iterators?
+
+## TODO
+
+* expr
+    * parse string (done)
+    * parse nested fun calls (done)
+    * binary operations
+        * precedence
+    * parser error diagnostics
+* maybe make generic linked list
