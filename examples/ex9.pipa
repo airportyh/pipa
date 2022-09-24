@@ -1,0 +1,4 @@
+int a = 4
+int b = 6
+int c = a + b * 4
+int d = c * b + a
