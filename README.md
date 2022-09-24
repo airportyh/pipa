@@ -31,7 +31,7 @@ Just enough to write a compiler.
 * expr
     * parse string (done)
     * parse nested fun calls (done)
-    * binary operations
-        * precedence
+    * binary operations (done)
+        * precedence (done)
     * parser error diagnostics
 * maybe make generic linked list

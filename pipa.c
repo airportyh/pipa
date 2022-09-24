@@ -37,7 +37,7 @@ typedef enum _TokenizeErrorType {
 typedef struct _Token {
     TokenType type;
     char *text;
-    
+
     // TODO replace with LocationInfo
     int startOffset;
     int endOffset;
@@ -212,7 +212,7 @@ int printToken(Token *token, int details) {
         printf("%s", token->text);
     }
     if (details) {
-        printf(",%d,%d,%d,%d,%d,%d", 
+        printf(",%d,%d,%d,%d,%d,%d",
             token->startOffset, token->endOffset,
             token->startLine, token->endLine,
             token->startChar, token->endChar
@@ -220,13 +220,13 @@ int printToken(Token *token, int details) {
     }
     printf(")");
     printf("\n");
-    
+
     return 0;
 }
 
 void tokenListAppend(
-    TokenList **tokens, 
-    TokenList **tokensTail, 
+    TokenList **tokens,
+    TokenList **tokensTail,
     Token *token
 ) {
     // Append to the end of tokens linked list
@@ -242,7 +242,7 @@ void tokenListAppend(
 }
 
 Token *createToken(
-    TokenType type, 
+    TokenType type,
     char *text,
     int startOffset,
     int startLine,
@@ -261,7 +261,7 @@ Token *createToken(
 }
 
 Token *createTokenLong(
-    TokenType type, 
+    TokenType type,
     char *text,
     int startOffset,
     int endOffset,
@@ -283,13 +283,13 @@ Token *createTokenLong(
 }
 
 int tokenize(
-    FILE *file, 
+    FILE *file,
     TokenList **tokensRetval,
     TokenizeErrorInfo *errorInfo
 ) {
     char chr;
     char buffer[100];
-    
+
     TokenList *tokens = NULL;
     TokenList *tokensTail = NULL;
     Token *token = NULL;
@@ -513,14 +513,14 @@ int tokenize(
             errorInfo->character = c;
             return UnknownChar;
         }
-        
+
         chr = fgetc(file);
         c++;
         i++;
     }
-    
+
     (*tokensRetval) = tokens;
-    
+
     return 0;
 }
 
@@ -598,8 +598,18 @@ int printAST(Node *node, int level) {
             }
             break;
     }
-    
+
     return 0;
+}
+
+int opPrec(int opType) {
+  if (opType == AddOp || opType == SubtractOp) {
+    return 1;
+  } else if (opType == DivideOp || opType == MultiplyOp) {
+    return 2;
+  } else {
+    return 0;
+  }
 }
 
 ParseError parseFunCall(TokenList *tokens, Node **resultNode, TokenList **tokensLeft);
@@ -614,7 +624,7 @@ ParseError parseUnaryOp(TokenList *tokens, Node **resultNode, TokenList **tokens
     if (tokens == NULL) {
         return ParseNoMatch;
     }
-    
+
     Node *node;
     if (ParseSuccess == parseFunCall(tokens, &node, tokensLeft)) {
         *resultNode = node;
@@ -655,16 +665,35 @@ ParseError parseBinaryOp(TokenList *tokens, Node **resultNode, TokenList **token
             *resultNode = lhs;
             return ParseSuccess;
         }
-        TokenType opType = tokens->token->type;
+        TokenType op = tokens->token->type;
         tokens = tokens->next;
         if (tokens == NULL) return ParseNoMatch;
         Node *rhs;
         if (ParseSuccess == parseBinaryOp(tokens, &rhs, tokensLeft)) {
+            if (rhs->type == BinaryOp) {
+                int rhsOp = rhs->data.binOp.op;
+                if (opPrec(op) > opPrec(rhsOp)) {
+                    // Reshape the tree
+                    Node *ret = malloc(sizeof (Node));
+                    Node *newLhs = malloc(sizeof (Node));
+                    newLhs->type = BinaryOp;
+                    newLhs->data.binOp.lhs = lhs;
+                    newLhs->data.binOp.op = op;
+                    newLhs->data.binOp.rhs = rhs->data.binOp.lhs;
+                    ret->type = BinaryOp;
+                    ret->data.binOp.lhs = newLhs;
+                    ret->data.binOp.op = rhs->data.binOp.op;
+                    ret->data.binOp.rhs = rhs->data.binOp.rhs;
+                    free(rhs);
+                    *resultNode = ret;
+                    return ParseSuccess;
+                }
+            }
             Node *ret = malloc(sizeof (Node));
             ret->type = BinaryOp;
             ret->data.binOp.lhs = lhs;
             ret->data.binOp.rhs = rhs;
-            ret->data.binOp.op = opType;
+            ret->data.binOp.op = op;
             *resultNode = ret;
             return ParseSuccess;
         }
@@ -673,8 +702,8 @@ ParseError parseBinaryOp(TokenList *tokens, Node **resultNode, TokenList **token
 }
 
 ParseError parseVarAssign(
-    TokenList *tokens, 
-    Node **resultNode, 
+    TokenList *tokens,
+    Node **resultNode,
     TokenList **tokensLeft
 ) {
     if (tokens == NULL) {
@@ -702,9 +731,9 @@ ParseError parseVarAssign(
     if (result != ParseSuccess) {
         return result;
     }
-    
+
     *tokensLeft = left;
-    
+
     // Create the node
     Node *varType = malloc(sizeof (Node));
     varType->type = TypeIdentifier;
@@ -716,23 +745,23 @@ ParseError parseVarAssign(
     // varType->location.startChar = typeIdToken.startChar;
     // varType->location.endChar = typeIdToken.endChar;
     varType->data.id = typeIdToken->text;
-    
+
     Node *varName = malloc(sizeof (Node));
     varName->type = Identifier;
     varName->data.id = varNameToken->text;
-    
+
     Node *varAssign = malloc(sizeof (Node));
     varAssign->type = VarAssign;
     varAssign->data.varAssign.varType = varType;
     varAssign->data.varAssign.varName = varName;
     varAssign->data.varAssign.initValue = initValue;
-    
+
     *resultNode = varAssign;
     return 0;
 }
 
 ParseError parseFunCall(
-    TokenList *tokens, 
+    TokenList *tokens,
     Node **resultNode,
     TokenList **tokensLeft
 ) {
@@ -744,10 +773,10 @@ ParseError parseFunCall(
         return ParseNoMatch;
     }
     tokens = tokens->next;
-    if (tokens->token->type != LeftParan) {
+    if (tokens == NULL || tokens->token->type != LeftParan) {
         return ParseNoMatch;
     }
-    
+
     tokens = tokens->next;
     NodeList *args = NULL;
     NodeList *argsTail = NULL;
@@ -782,7 +811,7 @@ ParseError parseFunCall(
     if (tokens->token->type != RightParan) {
         return ParseNoMatch;
     }
-    
+
     Node *retval = malloc(sizeof (Node));
     retval->type = FunCall;
     Node *funNameNode = malloc(sizeof (Node));
@@ -836,7 +865,7 @@ ParseError parse(TokenList *tokens, Node **resultNode) {
             break;
         }
     }
-    
+
     Node *program = malloc(sizeof (Node));
     program->type = Program;
     program->data.program.statements = statements;
@@ -852,12 +881,12 @@ void parseCommand(FILE *file) {
     TokenList *tokens;
     TokenizeErrorInfo errorInfo;
     TokenizeErrorType lexResult = tokenize(file, &tokens, &errorInfo);
-    
+
     if (lexResult != LexSuccess) {
         printf("Lex failed\n");
         return;
     }
-    
+
     Node *resultNode;
     int result = parse(tokens, &resultNode);
     if (result == ParseSuccess) {
@@ -883,7 +912,7 @@ void lexCommand(FILE *file) {
         printf("Line %d, char %d, offset %d\n", errorInfo.line, errorInfo.character, errorInfo.offset);
         exit(1);
     }
-    
+
     while (tokens != NULL) {
         printToken(tokens->token, 0);
         tokens = tokens->next;
@@ -896,7 +925,7 @@ int main(int argc, char *argv[]) {
         printf("  where command is one of: lex and parse\n");
         exit(1);
     }
-    
+
     char* command = argv[1];
     char* filename = argv[2];
     FILE *file = fopen(filename, "r");
@@ -906,7 +935,7 @@ int main(int argc, char *argv[]) {
         parseCommand(file);
     }
     fclose(file);
-    
-    
-    
+
+
+
 }
