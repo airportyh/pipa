@@ -24,6 +24,9 @@ bool compile(str filePath) {
     for entry in readDir(filePath) {
         print(entry)
     }
+    if a > b {
+        print("Hey that's not right")
+    }
 }
 
 # string formatting
@@ -31,11 +34,10 @@ bool compile(str filePath) {
 message = "Hello, {name + stuff}!"
 
 Iterator<str> readlines(File file) {
-    
+
 }
 
 file = openFile("program.pipa")
 for line in readLines(file) {
-    
+
 }
-    

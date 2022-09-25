@@ -20,11 +20,13 @@ Just enough to write a compiler.
 * functions
 * python-style indent-based blocks
 * minimal commas?
-* compiles to assembly
+* compiles to assembly (gas)
+* maybe we write our own assembler
 * no auto memory management (you use malloc)
 * syntax style is pleasant and is like Python (to me)
-* do we need modules?
+* do we need modules? no
 * iterators?
+* protocols?
 
 ## TODO
 
@@ -33,5 +35,9 @@ Just enough to write a compiler.
     * parse nested fun calls (done)
     * binary operations (done)
         * precedence (done)
-    * parser error diagnostics
+* parser error diagnostics
+* if statements
+* loops
+* structs
+* function definitions
 * maybe make generic linked list

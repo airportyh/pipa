@@ -34,17 +34,19 @@ typedef enum _TokenizeErrorType {
     UnknownChar,
 } TokenizeErrorType;
 
-typedef struct _Token {
-    TokenType type;
-    char *text;
-
-    // TODO replace with LocationInfo
+typedef struct _Location {
     int startOffset;
     int endOffset;
     int startLine;
     int endLine;
     int startChar;
     int endChar;
+} Location;
+
+typedef struct _Token {
+    TokenType type;
+    char *text;
+    Location location;
 } Token;
 
 typedef struct _TokenList {
@@ -68,15 +70,6 @@ typedef enum _NodeType {
     Program,
     BinaryOp,
 } NodeType;
-
-typedef struct _LocationInfo {
-    int startOffset;
-    int endOffset;
-    int startLine;
-    int endLine;
-    int startChar;
-    int endChar;
-} LocationInfo;
 
 typedef enum _ParseError {
     ParseSuccess = 0,
@@ -108,7 +101,7 @@ struct BinOpData {
 
 typedef struct _Node {
     NodeType type;
-    LocationInfo location;
+    Location location;
     union {
         struct VarAssignData varAssign;
         struct FunCallData funCall;
@@ -213,9 +206,9 @@ int printToken(Token *token, int details) {
     }
     if (details) {
         printf(",%d,%d,%d,%d,%d,%d",
-            token->startOffset, token->endOffset,
-            token->startLine, token->endLine,
-            token->startChar, token->endChar
+            token->location.startOffset, token->location.endOffset,
+            token->location.startLine, token->location.endLine,
+            token->location.startChar, token->location.endChar
         );
     }
     printf(")");
@@ -251,12 +244,12 @@ Token *createToken(
     Token *token = malloc(sizeof (Token));
     token->type = type;
     token->text = text;
-    token->startOffset = startOffset;
-    token->endOffset = startOffset;
-    token->startLine = startLine;
-    token->endLine = startLine;
-    token->startChar = startChar;
-    token->endChar = startChar;
+    token->location.startOffset = startOffset;
+    token->location.endOffset = startOffset;
+    token->location.startLine = startLine;
+    token->location.endLine = startLine;
+    token->location.startChar = startChar;
+    token->location.endChar = startChar;
     return token;
 }
 
@@ -273,12 +266,12 @@ Token *createTokenLong(
     Token *token = malloc(sizeof (Token));
     token->type = type;
     token->text = text;
-    token->startOffset = startOffset;
-    token->endOffset = endOffset;
-    token->startLine = startLine;
-    token->endLine = endLine;
-    token->startChar = startChar;
-    token->endChar = endChar;
+    token->location.startOffset = startOffset;
+    token->location.endOffset = endOffset;
+    token->location.startLine = startLine;
+    token->location.endLine = endLine;
+    token->location.startChar = startChar;
+    token->location.endChar = endChar;
     return token;
 }
 
@@ -524,6 +517,22 @@ int tokenize(
     return 0;
 }
 
+void copyLocation(Location *src, Location *dest) {
+    memcpy(src, dest, sizeof (Location));
+}
+
+void copyLocationStart(Location *src, Location *dest) {
+    src->startOffset = dest->startOffset;
+    src->startLine = dest->startLine;
+    src->startChar = dest->startChar;
+}
+
+void copyLocationEnd(Location *src, Location *dest) {
+    src->endOffset = dest->endOffset;
+    src->endLine = dest->endLine;
+    src->endChar = dest->endChar;
+}
+
 int printAST(Node *node, int level) {
     for (int i = 0; i < level; i++) {
         printf("  ");
@@ -635,6 +644,7 @@ ParseError parseUnaryOp(TokenList *tokens, Node **resultNode, TokenList **tokens
         Node *node = malloc(sizeof (Node));
         node->type = IntLiteral;
         node->data.val = atoi(token->text);
+        copyLocation(&token->location, &node->location);
         *resultNode = node;
         *tokensLeft = tokens->next;
         return ParseSuccess;
@@ -642,6 +652,7 @@ ParseError parseUnaryOp(TokenList *tokens, Node **resultNode, TokenList **tokens
         Node *node = malloc(sizeof (Node));
         node->type = Identifier;
         node->data.id = token->text;
+        copyLocation(&token->location, &node->location);
         *resultNode = node;
         *tokensLeft = tokens->next;
         return ParseSuccess;
@@ -649,6 +660,7 @@ ParseError parseUnaryOp(TokenList *tokens, Node **resultNode, TokenList **tokens
         Node *node = malloc(sizeof (Node));
         node->type = StrLiteral;
         node->data.str = token->text;
+        copyLocation(&token->location, &node->location);
         *resultNode = node;
         *tokensLeft = tokens->next;
         return ParseSuccess;
@@ -659,46 +671,50 @@ ParseError parseUnaryOp(TokenList *tokens, Node **resultNode, TokenList **tokens
 
 ParseError parseBinaryOp(TokenList *tokens, Node **resultNode, TokenList **tokensLeft) {
     Node *lhs;
-    if (ParseSuccess == parseUnaryOp(tokens, &lhs, tokensLeft)) {
-        tokens = *tokensLeft;
-        if (tokens == NULL || !isOperator(tokens->token->type)) {
-            *resultNode = lhs;
-            return ParseSuccess;
-        }
-        TokenType op = tokens->token->type;
-        tokens = tokens->next;
-        if (tokens == NULL) return ParseNoMatch;
-        Node *rhs;
-        if (ParseSuccess == parseBinaryOp(tokens, &rhs, tokensLeft)) {
-            if (rhs->type == BinaryOp) {
-                int rhsOp = rhs->data.binOp.op;
-                if (opPrec(op) > opPrec(rhsOp)) {
-                    // Reshape the tree
-                    Node *ret = malloc(sizeof (Node));
-                    Node *newLhs = malloc(sizeof (Node));
-                    newLhs->type = BinaryOp;
-                    newLhs->data.binOp.lhs = lhs;
-                    newLhs->data.binOp.op = op;
-                    newLhs->data.binOp.rhs = rhs->data.binOp.lhs;
-                    ret->type = BinaryOp;
-                    ret->data.binOp.lhs = newLhs;
-                    ret->data.binOp.op = rhs->data.binOp.op;
-                    ret->data.binOp.rhs = rhs->data.binOp.rhs;
-                    free(rhs);
-                    *resultNode = ret;
-                    return ParseSuccess;
-                }
-            }
-            Node *ret = malloc(sizeof (Node));
+    if (ParseSuccess != parseUnaryOp(tokens, &lhs, tokensLeft)) {
+        return ParseNoMatch;
+    }
+    tokens = *tokensLeft;
+    if (tokens == NULL || !isOperator(tokens->token->type)) {
+        *resultNode = lhs;
+        return ParseSuccess;
+    }
+    TokenType op = tokens->token->type;
+    tokens = tokens->next;
+    if (tokens == NULL) return ParseNoMatch;
+    Node *rhs;
+    if (ParseSuccess != parseBinaryOp(tokens, &rhs, tokensLeft)) {
+        return ParseNoMatch;
+    }
+    Node *ret = malloc(sizeof (Node));
+
+    copyLocationStart(&lhs->location, &ret->location);
+    copyLocationEnd(&rhs->location, &ret->location);
+    
+    if (rhs->type == BinaryOp) {
+        int rhsOp = rhs->data.binOp.op;
+        if (opPrec(op) > opPrec(rhsOp)) {
+            // Reshape the tree
+            Node *newLhs = malloc(sizeof (Node));
+            newLhs->type = BinaryOp;
+            newLhs->data.binOp.lhs = lhs;
+            newLhs->data.binOp.op = op;
+            newLhs->data.binOp.rhs = rhs->data.binOp.lhs;
             ret->type = BinaryOp;
-            ret->data.binOp.lhs = lhs;
-            ret->data.binOp.rhs = rhs;
-            ret->data.binOp.op = op;
+            ret->data.binOp.lhs = newLhs;
+            ret->data.binOp.op = rhs->data.binOp.op;
+            ret->data.binOp.rhs = rhs->data.binOp.rhs;
+            free(rhs);
             *resultNode = ret;
             return ParseSuccess;
         }
     }
-    return ParseNoMatch;
+    ret->type = BinaryOp;
+    ret->data.binOp.lhs = lhs;
+    ret->data.binOp.rhs = rhs;
+    ret->data.binOp.op = op;
+    *resultNode = ret;
+    return ParseSuccess;
 }
 
 ParseError parseVarAssign(
@@ -735,22 +751,20 @@ ParseError parseVarAssign(
     *tokensLeft = left;
 
     // Create the node
+    Node *varAssign = malloc(sizeof (Node));
+    copyLocationStart(&typeIdToken->location, &varAssign->location);
+    copyLocationEnd(&initValue->location, &varAssign->location);
+    
     Node *varType = malloc(sizeof (Node));
     varType->type = TypeIdentifier;
-    // TODO copy location info
-    // varType->location.startOffset = typeIdToken.startOffset;
-    // varType->location.endOffset = typeIdToken.endOffset;
-    // varType->location.startLine = typeIdToken.startLine;
-    // varType->location.endLine = typeIdToken.endLine;
-    // varType->location.startChar = typeIdToken.startChar;
-    // varType->location.endChar = typeIdToken.endChar;
+    copyLocation(&typeIdToken->location, &varType->location);
     varType->data.id = typeIdToken->text;
 
     Node *varName = malloc(sizeof (Node));
     varName->type = Identifier;
+    copyLocation(&varNameToken->location, &varName->location);
     varName->data.id = varNameToken->text;
 
-    Node *varAssign = malloc(sizeof (Node));
     varAssign->type = VarAssign;
     varAssign->data.varAssign.varType = varType;
     varAssign->data.varAssign.varName = varName;
@@ -813,9 +827,12 @@ ParseError parseFunCall(
     }
 
     Node *retval = malloc(sizeof (Node));
+    copyLocationStart(&funName->location, &retval->location);
+    copyLocationEnd(&argsTail->node->location, &retval->location);
     retval->type = FunCall;
     Node *funNameNode = malloc(sizeof (Node));
     funNameNode->type = Identifier;
+    copyLocation(&funName->location, &funNameNode->location);
     funNameNode->data.id = funName->text;
     retval->data.funCall.funName = funNameNode;
     retval->data.funCall.args = args;
