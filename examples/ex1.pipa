@@ -4,7 +4,7 @@ str name = "Pipa"
 
 int i = 4
 
-float f = 34.23
+float f = 34
 
 struct Token {
     str name

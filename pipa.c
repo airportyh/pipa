@@ -913,29 +913,55 @@ void reportParseError(char *filename, int parseResult, TokenList *tokensLeft) {
     size_t lineCap = 0;
     int lineNo = 1;
     printf("Unexpected ");
-    printToken(token, 0);
-    int printMore = 0;
-    while (1) {
-        int read = getline(&line, &lineCap, file);
-        if (read == -1) {
-            break;
-        }
-        if (printMore > 0) {
-            printf("%*d  %s", 3, lineNo, line);
-            printMore--;
-        }
-        if (token != NULL && token->location.startLine == lineNo) {
-            printf("%*d  %s", 3, lineNo, line);
-            printf("     ");
-            for (int i = 1; i < token->location.startChar; i++) {
-                printf(" ");
+    if (token == NULL) {
+        char *lastLine = NULL;
+        printf("end of file\n");
+        while (1) {
+            int read = getline(&line, &lineCap, file);
+            if (read == -1) {
+                break;
             }
-            printf("^\n");
-            printMore = 4;
+            if (lastLine != NULL) {
+                free(lastLine);
+                lastLine = NULL;
+            }
+            lastLine = malloc(read);
+            strcpy(lastLine, line);
+            lineNo++;
         }
-        lineNo++;
+        printf("%*d  %s\n", 3, lineNo, lastLine);
+        free(lastLine);
+        printf("     ");
+        for (int i = 0; i < strlen(lastLine); i++) {
+            printf(" ");
+        }
+        printf("^\n");
+    } else {
+        printToken(token, 0);
+        int printMore = 0;
+        while (1) {
+            int read = getline(&line, &lineCap, file);
+            if (read == -1) {
+                break;
+            }
+            if (printMore > 0) {
+                printf("%*d  %s", 3, lineNo, line);
+                printMore--;
+            }
+            if (token != NULL && token->location.startLine == lineNo) {
+                printf("%*d  %s", 3, lineNo, line);
+                printf("     ");
+                for (int i = 1; i < token->location.startChar; i++) {
+                    printf(" ");
+                }
+                printf("^\n");
+                printMore = 4;
+            }
+            lineNo++;
+        }
+        printf("\n");
     }
-    printf("\n");
+    fclose(file);
 }
 
 void parseCommand(char *filename) {
