@@ -631,6 +631,7 @@ ParseError parseExpr(TokenList *tokens, Node **resultNode, TokenList **tokensLef
 
 ParseError parseUnaryOp(TokenList *tokens, Node **resultNode, TokenList **tokensLeft) {
     if (tokens == NULL) {
+        *tokensLeft = tokens;
         return ParseNoMatch;
     }
 
@@ -665,6 +666,7 @@ ParseError parseUnaryOp(TokenList *tokens, Node **resultNode, TokenList **tokens
         *tokensLeft = tokens->next;
         return ParseSuccess;
     } else {
+        *tokensLeft = tokens;
         return ParseNoMatch;
     }
 }
@@ -681,7 +683,10 @@ ParseError parseBinaryOp(TokenList *tokens, Node **resultNode, TokenList **token
     }
     TokenType op = tokens->token->type;
     tokens = tokens->next;
-    if (tokens == NULL) return ParseNoMatch;
+    if (tokens == NULL) {
+        *tokensLeft = NULL;
+        return ParseNoMatch;
+    }
     Node *rhs;
     if (ParseSuccess != parseBinaryOp(tokens, &rhs, tokensLeft)) {
         return ParseNoMatch;
@@ -723,20 +728,24 @@ ParseError parseVarAssign(
     TokenList **tokensLeft
 ) {
     if (tokens == NULL) {
+        *tokensLeft = NULL;
         return ParseNoMatch;
     }
     Token *typeIdToken = tokens->token;
     if (typeIdToken->type != Id) {
+        *tokensLeft = tokens;
         return ParseNoMatch;
     }
     tokens = tokens->next;
     Token *varNameToken = tokens->token;
     if (varNameToken->type != Id) {
+        *tokensLeft = tokens;
         return ParseNoMatch;
     }
     tokens = tokens->next;
     Token *assignToken = tokens->token;
     if (assignToken->type != AssignOp) {
+        *tokensLeft = tokens;
         return ParseNoMatch;
     }
     tokens = tokens->next;
@@ -780,14 +789,17 @@ ParseError parseFunCall(
     TokenList **tokensLeft
 ) {
     if (tokens == NULL) {
+        *tokensLeft = NULL;
         return ParseNoMatch;
     }
     Token *funName = tokens->token;
     if (funName->type != Id) {
+        *tokensLeft = tokens;
         return ParseNoMatch;
     }
     tokens = tokens->next;
     if (tokens == NULL || tokens->token->type != LeftParan) {
+        *tokensLeft = tokens;
         return ParseNoMatch;
     }
 
@@ -801,6 +813,7 @@ ParseError parseFunCall(
         if (result == ParseSuccess) {
             tokens = left;
             if (tokens == NULL) {
+                *tokensLeft = NULL;
                 return ParseNoMatch;
             }
             NodeList *next = malloc(sizeof (NodeList));
@@ -823,6 +836,8 @@ ParseError parseFunCall(
         }
     }
     if (tokens->token->type != RightParan) {
+        // TODO: free args
+        *tokensLeft = tokens;
         return ParseNoMatch;
     }
 
@@ -851,35 +866,30 @@ ParseError parseStatement(TokenList *tokens, Node **resultNode, TokenList **toke
     return ParseNoMatch;
 }
 
-ParseError parse(TokenList *tokens, Node **resultNode) {
+ParseError parse(TokenList *tokens, Node **resultNode, TokenList **tokensLeft) {
     NodeList *statements = NULL;
     NodeList *statementsTail = NULL;
     while (1) {
         Node *stmtNode;
-        TokenList *left;
-        if (ParseSuccess == parseStatement(tokens, &stmtNode, &left)) {
-            NodeList *next = malloc(sizeof (NodeList));
-            next->node = stmtNode;
-            next->next = NULL;
-            if (statements == NULL) {
-                statements = next;
-                statementsTail = next;
-            } else {
-                statementsTail->next = next;
-                statementsTail = next;
-            }
-            tokens = left;
-        } else {
+        if (ParseSuccess != parseStatement(tokens, &stmtNode, tokensLeft)) {
             return ParseNoMatch;
         }
+        NodeList *next = malloc(sizeof (NodeList));
+        next->node = stmtNode;
+        next->next = NULL;
+        if (statements == NULL) {
+            statements = next;
+            statementsTail = next;
+        } else {
+            statementsTail->next = next;
+            statementsTail = next;
+        }
+        tokens = *tokensLeft;
         if (tokens == NULL) {
             break;
         }
-        if (tokens->token->type == Newline) {
+        while (tokens->token->type == Newline) {
             tokens = tokens->next;
-            continue;
-        } else {
-            break;
         }
     }
 
@@ -889,41 +899,74 @@ ParseError parse(TokenList *tokens, Node **resultNode) {
     *resultNode = program;
     if (tokens != NULL) {
         *resultNode = program;
+        *tokensLeft = NULL;
         return ParseExtraTokens;
     }
     return ParseSuccess;
 }
 
-void parseCommand(FILE *file) {
+void reportParseError(char *filename, int parseResult, TokenList *tokensLeft) {
+    printf("Parse error:\n");
+    Token *token = tokensLeft == NULL ? NULL : tokensLeft->token;
+    FILE *file = fopen(filename, "r");
+    char *line;
+    size_t lineCap = 0;
+    int lineNo = 1;
+    printf("Unexpected ");
+    printToken(token, 0);
+    int printMore = 0;
+    while (1) {
+        int read = getline(&line, &lineCap, file);
+        if (read == -1) {
+            break;
+        }
+        if (printMore > 0) {
+            printf("%*d  %s", 3, lineNo, line);
+            printMore--;
+        }
+        if (token != NULL && token->location.startLine == lineNo) {
+            printf("%*d  %s", 3, lineNo, line);
+            printf("     ");
+            for (int i = 1; i < token->location.startChar; i++) {
+                printf(" ");
+            }
+            printf("^\n");
+            printMore = 4;
+        }
+        lineNo++;
+    }
+    printf("\n");
+}
+
+void parseCommand(char *filename) {
+    FILE *file = fopen(filename, "r");
     TokenList *tokens;
     TokenizeErrorInfo errorInfo;
     TokenizeErrorType lexResult = tokenize(file, &tokens, &errorInfo);
-
+    fclose(file);
     if (lexResult != LexSuccess) {
         printf("Lex failed\n");
         return;
     }
 
     Node *resultNode;
-    int result = parse(tokens, &resultNode);
+    TokenList *tokensLeft;
+    
+    int result = parse(tokens, &resultNode, &tokensLeft);
     if (result == ParseSuccess) {
         printAST(resultNode, 0);
-    } else if (result == ParseExtraTokens) {
-        printAST(resultNode, 0);
-        printf("Parse failed: extra token(s) at the end\n");
-    } else if (result == ParseNoMatch) {
-        printf("Parse failed: no match\n");
-    } else if (result == ParseUnrecoverable) {
-        printf("Parse failed: unrecoverable\n");
     } else {
-        printf("Parse failed\n");
+        reportParseError(filename, result, tokensLeft);
     }
+    
 }
 
-void lexCommand(FILE *file) {
+void lexCommand(char *filename) {
+    FILE *file = fopen(filename, "r");
     TokenList *tokens;
     TokenizeErrorInfo errorInfo;
     TokenizeErrorType err = tokenize(file, &tokens, &errorInfo);
+    fclose(file);
     if (err != 0) {
         printf("Tokenize error: %d\n", err);
         printf("Line %d, char %d, offset %d\n", errorInfo.line, errorInfo.character, errorInfo.offset);
@@ -946,13 +989,13 @@ int main(int argc, char *argv[]) {
     char* command = argv[1];
     char* filename = argv[2];
     FILE *file = fopen(filename, "r");
-    if (strcmp(command, "lex") == 0) {
-        lexCommand(file);
-    } else if (strcmp(command, "parse") == 0) {
-        parseCommand(file);
+    if (file == NULL) {
+        printf("Failed to open %s\n", filename);
+        exit(1);
     }
-    fclose(file);
-
-
-
+    if (strcmp(command, "lex") == 0) {
+        lexCommand(filename);
+    } else if (strcmp(command, "parse") == 0) {
+        parseCommand(filename);
+    }
 }

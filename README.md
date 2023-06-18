@@ -36,6 +36,11 @@ Just enough to write a compiler.
     * binary operations (done)
         * precedence (done)
 * parser error diagnostics
+    * maybe EOF needs to be a token so that we can use same logic to point to its location in file? Although we can also figure it out with file content
+    * if tried multiple different paths and both failed, should report the one that got further
+    * show parse context, which probably should be a stack, but not clear how much of
+    the stack to display, doesn't hurt to collect them all just in case
+    * implement display of the token location with source snippet (done)
 * if statements
 * loops
 * structs
