@@ -1,0 +1,7 @@
+int a = 1
+int b = 4
+if a > b {
+    print("a is more")
+} else {
+    print("a is less")
+}

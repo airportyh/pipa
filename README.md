@@ -9,15 +9,14 @@ new language.
 
 Just enough to write a compiler.
 
-* integers
-* strings
+* integers (done)
+* strings (done)
 * if statements
 * loops
 * structs
 * tagged unions??
 * pointers?
 * functions
-* python-style indent-based blocks
 * minimal commas?
 * compiles to assembly (gas)
 * maybe we write our own assembler

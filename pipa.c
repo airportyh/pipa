@@ -856,6 +856,38 @@ ParseError parseFunCall(
     return ParseSuccess;
 }
 
+// ParseError parseIfStatement(TokenList *tokens, Node** resultNode, TokenList **tokensLeft) {
+//     if (tokens == NULL) {
+//         *tokensLeft = NULL;
+//         return ParseNoMatch;
+//     }
+
+//     Token *ifKeyword = tokens->token;
+//     if (ifKeyword->type != Id) {
+//         *tokensLeft = tokens;
+//         return ParseNoMatch;
+//     }
+//     if (strcmp(ifKeyword->text, "if") != 0) {
+//         *tokensLeft = tokens;
+//         return ParseNoMatch;
+//     }
+//     tokens = tokens->next;
+//     Node *cond;
+//     ParseError condResult = parseExpr(tokens, &cond, &tokensLeft);
+//     if (condResult != ParseSuccess) {
+//         return condResult;
+//     }
+//     tokens = *tokensLeft;
+//     if (tokens == NULL) {
+//         return ParseNoMatch;
+//     }
+//     if (tokens->token->type != LeftBrace) {
+//         return ParseNoMatch;
+//     }
+
+
+// }
+
 ParseError parseStatement(TokenList *tokens, Node **resultNode, TokenList **tokensLeft) {
     if (ParseSuccess == parseVarAssign(tokens, resultNode, tokensLeft)) {
         return ParseSuccess;
@@ -863,10 +895,13 @@ ParseError parseStatement(TokenList *tokens, Node **resultNode, TokenList **toke
     if (ParseSuccess == parseFunCall(tokens, resultNode, tokensLeft)) {
         return ParseSuccess;
     }
+    // if (ParseSuccess == parseIfStatement(tokens, resultNode, tokensLeft)) {
+    //     return ParseSuccess;
+    // }
     return ParseNoMatch;
 }
 
-ParseError parse(TokenList *tokens, Node **resultNode, TokenList **tokensLeft) {
+ParseError parseStatements(TokenList *tokens, NodeList **statementsOut, TokenList **tokensLeft) {
     NodeList *statements = NULL;
     NodeList *statementsTail = NULL;
     while (1) {
@@ -892,14 +927,22 @@ ParseError parse(TokenList *tokens, Node **resultNode, TokenList **tokensLeft) {
             tokens = tokens->next;
         }
     }
+    (*statementsOut) = statements;
+    return ParseSuccess;
+}
+
+ParseError parse(TokenList *tokens, Node **resultNode, TokenList **tokensLeft) {
+    NodeList *statements = NULL;
+    if (ParseSuccess != parseStatements(tokens, &statements, tokensLeft)) {
+        return ParseNoMatch;
+    }
 
     Node *program = malloc(sizeof (Node));
     program->type = Program;
     program->data.program.statements = statements;
     *resultNode = program;
-    if (tokens != NULL) {
+    if (*tokensLeft != NULL) {
         *resultNode = program;
-        *tokensLeft = NULL;
         return ParseExtraTokens;
     }
     return ParseSuccess;
