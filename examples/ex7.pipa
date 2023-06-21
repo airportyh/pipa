@@ -1,3 +1,0 @@
-print("Hello, world")
-str bob = "Robert"
-str message = concat("Hello, ", bob)
