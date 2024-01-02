@@ -9,25 +9,18 @@ new language.
 
 Just enough to write a compiler.
 
-* integers (done)
-* strings (done)
-* if statements (done)
-* loops (done)
+* integers
+* strings
+* if statements
+* loops
 * structs
-* tagged unions??
-* pointers?
 * functions
-* minimal commas?
 * compiles to assembly (gas)
-* maybe we write our own assembler
-* no auto memory management (you use malloc)
 * syntax style is pleasant and is like Python (to me)
-* do we need modules? no
-* iterators?
-* protocols?
 
 ## TODO
 
+* ==, >=, <= operators (done)
 * expr
     * parse string (done)
     * parse nested fun calls (done)
@@ -39,8 +32,7 @@ Just enough to write a compiler.
     * show parse context, which probably should be a stack, but not clear how much of
     the stack to display, doesn't hurt to collect them all just in case
     * implement display of the token location with source snippet (done)
-* if statements
-* loops
+* if statements (done)
+* loops (done)
 * structs
 * function definitions
-* maybe make generic linked list

@@ -17,8 +17,11 @@ typedef enum _TokenType {
     RightBrace,
     LeftBracket,
     RightBracket,
+    EqualOp,
     LessThan,
+    LessThanOrEqual,
     GreaterThan,
+    GreaterThanOrEqual,
     Dot,
     Newline,
     Comma,
@@ -147,8 +150,11 @@ int isOperator(TokenType type) {
         type == SubtractOp ||
         type == DivideOp ||
         type == MultiplyOp ||
+        type == EqualOp ||
         type == GreaterThan ||
-        type == LessThan;
+        type == GreaterThanOrEqual ||
+        type == LessThan ||
+        type == LessThanOrEqual;
 }
 
 int printToken(Token *token, int details) {
@@ -196,11 +202,20 @@ int printToken(Token *token, int details) {
         case RightBracket:
             printf("RightBracket");
             break;
+        case EqualOp:
+            printf("EqualOp");
+            break;
         case LessThan:
             printf("LessThan");
             break;
+        case LessThanOrEqual:
+            printf("LessThanOrEqual");
+            break;
         case GreaterThan:
             printf("GreaterThan");
+            break;
+        case GreaterThanOrEqual:
+            printf("GreaterThanOrEqual");
             break;
         case Dot:
             printf("Dot");
@@ -426,9 +441,6 @@ int tokenize(
             );
             tokenListAppend(&tokens, &tokensTail, token);
             continue;
-        } else if (chr == '=') {
-            token = createToken(AssignOp, NULL, i, line, c);
-            tokenListAppend(&tokens, &tokensTail, token);
         } else if (chr == '+') {
             token = createToken(AddOp, NULL, i, line, c);
             tokenListAppend(&tokens, &tokensTail, token);
@@ -459,12 +471,42 @@ int tokenize(
         } else if (chr == ']') {
             token = createToken(RightBracket, NULL, i, line, c);
             tokenListAppend(&tokens, &tokensTail, token);
+        } else if (chr == '=') {
+            chr = fgetc(file);
+            c++;
+            i++;
+            if (chr == '=') {
+                token = createToken(EqualOp, NULL, i, line, c);
+                tokenListAppend(&tokens, &tokensTail, token);
+            } else {
+                token = createToken(AssignOp, NULL, i, line, c);
+                tokenListAppend(&tokens, &tokensTail, token);
+                continue;
+            }
         } else if (chr == '<') {
-            token = createToken(LessThan, NULL, i, line, c);
-            tokenListAppend(&tokens, &tokensTail, token);
+            chr = fgetc(file);
+            c++;
+            i++;
+            if (chr == '=') {
+                token = createToken(LessThanOrEqual, NULL, i, line, c);
+                tokenListAppend(&tokens, &tokensTail, token);
+            } else {
+                token = createToken(LessThan, NULL, i, line, c);
+                tokenListAppend(&tokens, &tokensTail, token);
+                continue;
+            }
         } else if (chr == '>') {
-            token = createToken(GreaterThan, NULL, i, line, c);
-            tokenListAppend(&tokens, &tokensTail, token);
+            chr = fgetc(file);
+            c++;
+            i++;
+            if (chr == '=') {
+                token = createToken(GreaterThanOrEqual, NULL, i, line, c);
+                tokenListAppend(&tokens, &tokensTail, token);
+            } else {
+                token = createToken(GreaterThan, NULL, i, line, c);
+                tokenListAppend(&tokens, &tokensTail, token);
+                continue;
+            }
         } else if (chr == '.') {
             token = createToken(Dot, NULL, i, line, c);
             tokenListAppend(&tokens, &tokensTail, token);
@@ -606,11 +648,20 @@ int printAST(Node *node, int level) {
                 case MultiplyOp:
                     printf("(*)");
                     break;
+                case EqualOp:
+                    printf("(==)");
+                    break;
                 case GreaterThan:
                     printf("(>)");
                     break;
+                case GreaterThanOrEqual:
+                    printf("(>=)");
+                    break;
                 case LessThan:
                     printf("(<)");
+                    break;
+                case LessThanOrEqual:
+                    printf("(<=)");
                     break;
                 default:
                     printf("(?)");
