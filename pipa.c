@@ -70,6 +70,8 @@ typedef enum _NodeType {
     Program,
     BinaryOp,
     IfStatement,
+    LoopStatement,
+    BreakStatement,
 } NodeType;
 
 typedef enum _ParseError {
@@ -105,6 +107,10 @@ struct IfStatementData {
     struct _NodeList *consequent;
 };
 
+struct LoopStatementData {
+    struct _NodeList *body;
+};
+
 typedef struct _Node {
     NodeType type;
     Location location;
@@ -114,6 +120,7 @@ typedef struct _Node {
         struct ProgramData program;
         struct BinOpData binOp;
         struct IfStatementData ifStatement;
+        struct LoopStatementData loopStatement;
         char *id;
         int val;
         char *str;
@@ -629,6 +636,18 @@ int printAST(Node *node, int level) {
                 printAST(consequent->node, level + 2);
                 consequent = consequent->next;
             }
+            break;
+        case LoopStatement:
+            printf("LoopStatement\n");
+            NodeList *body = node->data.loopStatement.body;
+            while (body != NULL) {
+                printAST(body->node, level + 2);
+                body = body->next;
+            }
+            break;
+        case BreakStatement:
+            printf("BreakStatement\n");
+            break;
     }
 
     return 0;
@@ -649,6 +668,8 @@ ParseError parseUnaryOp(TokenList *tokens, Node **resultNode, TokenList **tokens
 ParseError parseBinaryOp(TokenList *tokens, Node **resultNode, TokenList **tokensLeft);
 ParseError parseIfStatement(TokenList *tokens, Node** resultNode, TokenList **tokensLeft);
 ParseError parseStatements(TokenList *tokens, NodeList **statementsOut, TokenList **tokensLeft);
+ParseError parseLoopStatement(TokenList *tokens, Node **resultNode, TokenList ** tokensLeft);
+ParseError parseBreakStatement(TokenList *tokens, Node **resultNode, TokenList ** tokensLeft);
 
 ParseError parseExpr(TokenList *tokens, Node **resultNode, TokenList **tokensLeft) {
     return parseBinaryOp(tokens, resultNode, tokensLeft);
@@ -931,6 +952,75 @@ ParseError parseIfStatement(TokenList *tokens, Node** resultNode, TokenList **to
     return ParseSuccess;
 }
 
+ParseError parseLoopStatement(TokenList *tokens, Node **resultNode, TokenList ** tokensLeft) {
+    if (tokens == NULL) {
+        *tokensLeft = NULL;
+        return ParseNoMatch;
+    }
+
+    Token *loopKeyword = tokens->token;
+    if (loopKeyword->type != Id) {
+        *tokensLeft = tokens;
+        return ParseNoMatch;
+    }
+
+    if (strcmp(loopKeyword->text, "loop") != 0) {
+        *tokensLeft = tokens;
+        return ParseNoMatch;
+    }
+
+    tokens = tokens->next;
+    if (tokens->token->type != LeftBrace) {
+        return ParseNoMatch;
+    }
+    tokens = tokens->next;
+
+    NodeList *statements;
+    if (ParseSuccess != parseStatements(tokens, &statements, tokensLeft)) {
+        return ParseNoMatch;
+    }
+    tokens = *tokensLeft;
+    if (tokens == NULL || tokens->token->type != RightBrace) {
+        return ParseNoMatch;
+    }
+    Token *rightBrace = tokens->token;
+    tokens = tokens->next;
+    *tokensLeft = tokens;
+    Node *retval = malloc(sizeof (Node));
+    copyLocationStart(&loopKeyword->location, &retval->location);
+    copyLocationEnd(&rightBrace->location, &retval->location);
+    retval->type = LoopStatement;
+    retval->data.loopStatement.body = statements;
+    *resultNode = retval;
+    return ParseSuccess;
+}
+
+ParseError parseBreakStatement(TokenList *tokens, Node **resultNode, TokenList ** tokensLeft) {
+    if (tokens == NULL) {
+        *tokensLeft = NULL;
+        return ParseNoMatch;
+    }
+
+    Token *breakKeyword = tokens->token;
+    if (breakKeyword->type != Id) {
+        *tokensLeft = tokens;
+        return ParseNoMatch;
+    }
+
+    if (strcmp(breakKeyword->text, "break") != 0) {
+        *tokensLeft = tokens;
+        return ParseNoMatch;
+    }
+    *tokensLeft = tokens->next;
+
+    Node *retval = malloc(sizeof (Node));
+    retval->type = BreakStatement;
+    copyLocationStart(&breakKeyword->location, &retval->location);
+    copyLocationEnd(&breakKeyword->location, &retval->location);
+    *resultNode = retval;
+    return ParseSuccess;
+}
+
 ParseError parseStatement(TokenList *tokens, Node **resultNode, TokenList **tokensLeft) {
     if (ParseSuccess == parseVarAssign(tokens, resultNode, tokensLeft)) {
         return ParseSuccess;
@@ -939,6 +1029,12 @@ ParseError parseStatement(TokenList *tokens, Node **resultNode, TokenList **toke
         return ParseSuccess;
     }
     if (ParseSuccess == parseIfStatement(tokens, resultNode, tokensLeft)) {
+        return ParseSuccess;
+    }
+    if (ParseSuccess == parseLoopStatement(tokens, resultNode, tokensLeft)) {
+        return ParseSuccess;
+    }
+    if (ParseSuccess == parseBreakStatement(tokens, resultNode, tokensLeft)) {
         return ParseSuccess;
     }
     return ParseNoMatch;

@@ -11,8 +11,8 @@ Just enough to write a compiler.
 
 * integers (done)
 * strings (done)
-* if statements
-* loops
+* if statements (done)
+* loops (done)
 * structs
 * tagged unions??
 * pointers?
